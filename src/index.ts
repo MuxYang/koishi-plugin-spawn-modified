@@ -2,7 +2,7 @@ import { exec } from 'child_process'
 import { Context, h, Schema, Time } from 'koishi'
 import path from 'path'
 import { pathToFileURL } from 'url'
-import { debugLog } from './debug-log'
+import AnsiToHtml from 'ansi-to-html'
 
 declare module 'koishi' {
   interface Context {
@@ -91,13 +91,26 @@ async function renderTerminalImage(ctx: Context, workingDir: string, command: st
     throw new Error('Puppeteer plugin is not available')
   }
 
-  const displayOutput = output || '(no output)'
+  const ansiStrip = (text: string) => text.replace(/\x1B\[[0-9;]*[A-Za-z]/g, '')
+  const normalizeTabs = (text: string) => text.replace(/\t/g, '        ')
+  const displayOutputRaw = normalizeTabs(output || '(no output)')
+  const displayOutput = displayOutputRaw.replace(/^\s+/, '')
   const lines = displayOutput.split(/\r?\n/)
-  const commandLineLength = `${workingDir}$ ${command}`.length
-  const maxLineLength = Math.max(commandLineLength, ...lines.map(line => line.length)) || commandLineLength
-  const charWidth = 7.4 // approximate width of JetBrains Mono at 13px
-  const horizontalBuffer = 48 // padding + borders + margin buffer
-  const containerWidth = Math.max(600, Math.min(1400, Math.ceil(maxLineLength * charWidth + horizontalBuffer)))
+  const commandLineLength = ansiStrip(`${workingDir}$ ${command}`).length
+  const visibleLineLengths = lines.map(line => ansiStrip(line).length)
+  const maxLineLength = Math.max(commandLineLength, ...visibleLineLengths) || commandLineLength
+  const charWidth = 7.1 // refined average width for JetBrains Mono 13px
+  const horizontalBuffer = 56 // padding + borders + margin buffer
+  const containerWidth = Math.max(600, Math.min(1600, Math.ceil(maxLineLength * charWidth + horizontalBuffer)))
+
+  const ansi = new AnsiToHtml({
+    fg: '#cccccc',
+    bg: '#1e1e1e',
+    newline: true,
+    escapeXML: true,
+    stream: false,
+  })
+  const coloredOutputHtml = ansi.toHtml(displayOutput)
 
   const fontPath = pathToFileURL(path.resolve(__dirname, '../fonts/JetBrainsMono-Regular.ttf')).href
   
@@ -127,6 +140,8 @@ async function renderTerminalImage(ctx: Context, workingDir: string, command: st
       padding: 0;
       display: inline-block;
       width: ${containerWidth}px;
+      max-width: 1600px;
+      min-width: 600px;
     }
     
     .terminal {
@@ -169,18 +184,18 @@ async function renderTerminalImage(ctx: Context, workingDir: string, command: st
     .button.close { background: #ff5f56; }
     
     .content {
-      padding: 10px 14px;
+      padding: 8px 12px;
       white-space: pre;
       word-break: normal;
-      line-height: 1.25;
+      line-height: 1.18;
       overflow-x: auto;
     }
     
     .command-line {
       display: flex;
-      gap: 4px;
+      gap: 3px;
       align-items: baseline;
-      margin-bottom: 6px;
+      margin-bottom: 2px;
     }
     
     .prompt {
@@ -198,7 +213,7 @@ async function renderTerminalImage(ctx: Context, workingDir: string, command: st
     
     .output {
       color: #cccccc;
-      line-height: 1.22;
+      line-height: 1.12;
       white-space: pre;
       word-break: normal;
       overflow-x: auto;
@@ -220,7 +235,7 @@ async function renderTerminalImage(ctx: Context, workingDir: string, command: st
         <div class="prompt">${escapeHtml(workingDir)}$</div>
         <div class="command">${escapeHtml(command)}</div>
       </div>
-      <div class="output">${escapeHtml(displayOutput)}</div>
+      <div class="output">${coloredOutputHtml}</div>
     </div>
   </div>
 </body>
@@ -255,19 +270,15 @@ export function apply(ctx: Context, config: Config) {
 
   ctx.command('exec <command:text>', { authority: config.authority ?? 4 })
     .action(async ({ session }, command) => {
-      debugLog(ctx, 'input', { command })
       if (!command) {
-        debugLog(ctx, 'expect-text', { text: session.text('.expect-text') })
         return session.text('.expect-text')
       }
 
       command = h('', h.parse(command)).toString(true)
-      debugLog(ctx, 'parsed-command', { command })
       // 检查命令过滤（黑/白名单）
       const filterList = (config.commandList?.length ? config.commandList : config.blockedCommands) || []
       const filterMode = config.commandFilterMode || 'blacklist'
       if (isCommandBlocked(command, filterMode, filterList)) {
-        debugLog(ctx, 'blocked-command', { command, filterMode, filterList })
         return session.text('.blocked-command')
       }
       const sessionId = session.uid || session.channelId
@@ -275,15 +286,12 @@ export function apply(ctx: Context, config: Config) {
       const currentDir = sessionDirs.get(sessionId) || rootDir
       // 验证 cd 命令
       const cdValidation = validateCdCommand(command, currentDir, rootDir, config.restrictDirectory)
-      debugLog(ctx, 'cd-validation', { command, cdValidation })
       if (!cdValidation.valid) {
-        debugLog(ctx, 'restricted-directory', { text: session.text('.restricted-directory') })
         return session.text('.restricted-directory')
       }
       const { timeout } = config
       const state: State = { command, timeout, output: '' }
       if (!config.renderImage) {
-        debugLog(ctx, 'send-started', { text: session.text('.started', state) })
         await session.send(session.text('.started', state))
       }
       return new Promise((resolve) => {
@@ -296,11 +304,9 @@ export function apply(ctx: Context, config: Config) {
           windowsHide: true,
         })
         child.stdout.on('data', (data) => {
-          debugLog(ctx, 'stdout', { data: data.toString() })
           state.output += data.toString()
         })
         child.stderr.on('data', (data) => {
-          debugLog(ctx, 'stderr', { data: data.toString() })
           state.output += data.toString()
         })
         child.on('close', async (code, signal) => {
@@ -308,25 +314,20 @@ export function apply(ctx: Context, config: Config) {
           state.signal = signal
           state.timeUsed = Date.now() - start
           state.output = state.output.trim()
-          debugLog(ctx, 'close', { code, signal, timeUsed: state.timeUsed, output: state.output })
           // 更新当前目录（如果是 cd 命令且执行成功）
           if (cdValidation.newDir && code === 0) {
             sessionDirs.set(sessionId, cdValidation.newDir)
-            debugLog(ctx, 'cd-updated', { sessionId, newDir: cdValidation.newDir })
           }
           // 渲染为图片或返回文本
           if (config.renderImage && ctx.puppeteer) {
             try {
               const image = await renderTerminalImage(ctx, currentDir, command, state.output || '(no output)')
-              debugLog(ctx, 'render-image-success')
               resolve(image)
             } catch (error) {
               ctx.logger.error('Failed to render terminal image:', error)
-              debugLog(ctx, 'render-image-fail', { error })
               resolve(session.text('.finished', state))
             }
           } else {
-            debugLog(ctx, 'send-finished', { text: session.text('.finished', state) })
             resolve(session.text('.finished', state))
           }
         })

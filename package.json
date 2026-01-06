@@ -1,6 +1,6 @@
 {
   "name": "koishi-plugin-spawn-modified",
-  "version": "1.2.0",
+  "version": "1.2.2",
   "description": "Run shell commands with Koishi",
   "keywords": [
     "bot",
@@ -83,5 +83,8 @@
         "puppeteer"
       ]
     }
+  },
+  "dependencies": {
+    "ansi-to-html": "^0.7.2"
   }
 }
