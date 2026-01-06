@@ -1,6 +1,6 @@
 {
   "name": "koishi-plugin-spawn-modified",
-  "version": "1.1.5",
+  "version": "1.2.0",
   "description": "Run shell commands with Koishi",
   "keywords": [
     "bot",
@@ -51,14 +51,18 @@
     "fonts"
   ],
   "scripts": {
-    "build": "tsc -b",
-    "clean": "rimraf lib"
+    "build": "tsc -b && node scripts/copy-locales.js",
+    "clean": "rimraf lib",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run clean && npm run build"
   },
   "devDependencies": {
     "@koishijs/plugin-help": "^2.4.3",
     "@koishijs/plugin-mock": "^2.6.5",
     "koishi": "^4.17.2",
-    "typescript": "^5.9.3"
+    "rimraf": "^5.0.5",
+    "typescript": "^5.9.3",
+    "yaml": "^2.8.2"
   },
   "peerDependencies": {
     "koishi": "^4.17.2"

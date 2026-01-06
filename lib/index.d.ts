@@ -15,6 +15,9 @@ export interface Config {
     renderImage?: boolean;
     blockedCommands?: string[];
     restrictDirectory?: boolean;
+    authority?: number;
+    commandFilterMode?: 'blacklist' | 'whitelist';
+    commandList?: string[];
 }
 export declare const Config: Schema<Config>;
 export interface State {

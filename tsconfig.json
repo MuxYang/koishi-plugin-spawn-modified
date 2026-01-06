@@ -1,8 +1,14 @@
 {
-  "extends": "../../tsconfig.base",
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "lib",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "declaration": true,
+    "emitDeclarationOnly": false
   },
   "include": [
     "src",
