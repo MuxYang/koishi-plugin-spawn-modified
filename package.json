@@ -2,28 +2,6 @@
   "name": "koishi-plugin-spawn-modified",
   "version": "1.1.2",
   "description": "Run shell commands with Koishi",
-  "main": "lib/index.js",
-  "typings": "lib/index.d.ts",
-  "files": [
-    "lib",
-    "src",
-    "fonts"
-  ],
-  "author": "MuxYang <tlnkmc.b@gmail.com>",
-  "contributors": [
-    "Shigma <shigma10826@gmail.com>",
-    "Dragon-Fish <dragon-fish@qq.com>",
-    "MuxYang <tlnkmc.b@gmail.com>"
-  ],
-  "license": "Apache-2.0",
-  "homepage": "https://github.com/MuxYang/koishi-plugin-spawn-modified#readme",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/MuxYang/koishi-plugin-spawn-modified.git"
-  },
-  "bugs": {
-    "url": "https://github.com/MuxYang/koishi-plugin-spawn-modified/issues"
-  },
   "keywords": [
     "bot",
     "chatbot",
@@ -37,16 +15,50 @@
     "terminal",
     "common"
   ],
-  "koishi": {
-    "description": {
-      "en": "Run shell commands with Koishi",
-      "zh": "使用 Koishi 运行终端命令"
+  "homepage": "https://github.com/MuxYang/koishi-plugin-spawn-modified#readme",
+  "bugs": {
+    "url": "https://github.com/MuxYang/koishi-plugin-spawn-modified/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MuxYang/koishi-plugin-spawn-modified.git"
+  },
+  "license": "Apache-2.0",
+  "author": "MuxYang <tlnkmc.b@gmail.com>",
+  "contributors": [
+    {
+      "name": "Shigma",
+      "email": "shigma10826@gmail.com"
+    },
+    {
+      "name": "Dragon-Fish",
+      "email": "dragon-fish@qq.com"
+    },
+    {
+      "name": "MuxYang",
+      "email": "tlnkmc.b@gmail.com"
     }
+  ],
+  "type": "commonjs",
+  "main": "lib/index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "tests"
+  },
+  "files": [
+    "lib",
+    "src",
+    "fonts"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rimraf lib"
   },
   "devDependencies": {
     "@koishijs/plugin-help": "^2.4.3",
     "@koishijs/plugin-mock": "^2.6.5",
-    "koishi": "^4.17.2"
+    "koishi": "^4.17.2",
+    "typescript": "^5.9.3"
   },
   "peerDependencies": {
     "koishi": "^4.17.2"
@@ -54,6 +66,13 @@
   "peerDependenciesMeta": {
     "koishi-plugin-puppeteer": {
       "optional": true
+    }
+  },
+  "typings": "lib/index.d.ts",
+  "koishi": {
+    "description": {
+      "en": "Run shell commands with Koishi",
+      "zh": "使用 Koishi 运行终端命令"
     }
   }
 }

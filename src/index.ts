@@ -3,6 +3,14 @@ import { Context, h, Schema, Time } from 'koishi'
 import path from 'path'
 import { pathToFileURL } from 'url'
 
+declare module 'koishi' {
+  interface Context {
+    puppeteer?: {
+      page(): Promise<any>
+    }
+  }
+}
+
 const encodings = ['utf8', 'utf16le', 'latin1', 'ucs2'] as const
 
 export interface Config {
