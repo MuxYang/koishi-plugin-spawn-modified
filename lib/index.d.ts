@@ -17,7 +17,6 @@ export interface Config {
     restrictDirectory?: boolean;
 }
 export declare const Config: Schema<Config>;
-export declare const schema: Schema<Config>;
 export interface State {
     command: string;
     timeout: number;
