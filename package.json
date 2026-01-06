@@ -1,6 +1,6 @@
 {
   "name": "koishi-plugin-spawn-modified",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "Run shell commands with Koishi",
   "keywords": [
     "bot",
