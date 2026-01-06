@@ -59,10 +59,27 @@ export const inject = {
 const sessionDirs = new Map<string, string>()
 
 // 命令过滤：支持黑名单/白名单模式
+function buildRegex(entry: string): RegExp | null {
+  try {
+    return new RegExp(entry, 'i')
+  } catch (_) {
+    // 回退为逐字匹配，防止用户写了非法正则
+    const escaped = entry.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    try {
+      return new RegExp(escaped, 'i')
+    } catch (_) {
+      return null
+    }
+  }
+}
+
 function isCommandBlocked(command: string, mode: 'blacklist' | 'whitelist', list: string[]): boolean {
   if (!list?.length) return false
-  const trimmedCommand = command.trim().toLowerCase()
-  const hit = list.some(entry => trimmedCommand.startsWith(entry.toLowerCase()))
+  const trimmedCommand = command.trim()
+  const hit = list.some(entry => {
+    const regex = buildRegex(entry)
+    return regex ? regex.test(trimmedCommand) : false
+  })
   return mode === 'blacklist' ? hit : !hit
 }
 
