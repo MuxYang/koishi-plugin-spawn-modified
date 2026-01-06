@@ -84,22 +84,42 @@ function isCommandBlocked(command: string, mode: 'blacklist' | 'whitelist', list
 }
 
 // 解析 cd 命令并验证路径
+function isWithinRoot(rootDir: string, targetPath: string): boolean {
+  const relative = path.relative(rootDir, targetPath)
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))
+}
+
 function validateCdCommand(command: string, currentDir: string, rootDir: string, restrictDirectory: boolean): { valid: boolean; newDir?: string; error?: string } {
-  const cdMatch = command.trim().match(/^cd\s+(.+)$/i)
-  if (!cdMatch) return { valid: true }
-  
   if (!restrictDirectory) return { valid: true }
-  
-  const targetPath = cdMatch[1].trim().replace(/['"]/g, '')
-  const absolutePath = path.resolve(currentDir, targetPath)
+
   const normalizedRoot = path.resolve(rootDir)
-  
-  // 检查目标路径是否在根目录内
-  if (!absolutePath.startsWith(normalizedRoot)) {
-    return { valid: false, error: 'restricted-directory' }
+  const cdMatches: RegExpExecArray[] = []
+  const cdRegex = /\bcd\s+([^;&|\n]+)/gi
+  let m: RegExpExecArray | null
+  while ((m = cdRegex.exec(command)) !== null) {
+    cdMatches.push(m)
   }
-  
-  return { valid: true, newDir: absolutePath }
+
+  if (!cdMatches.length) return { valid: true }
+
+  // 若命令被链式运算符分隔且包含 cd，则要求所有 cd 目标都在指定 root 下，否则拒绝
+  for (const match of cdMatches) {
+    const target = match[1].trim().replace(/['"]/g, '')
+    const absolutePath = path.resolve(currentDir, target)
+    if (!isWithinRoot(normalizedRoot, absolutePath)) {
+      return { valid: false, error: 'restricted-directory' }
+    }
+  }
+
+  // 仅当命令是单独的 cd 时才更新会话目录，避免链式命令切换目录后执行其他操作
+  const singleCdOnly = /^\s*cd\s+[^;&|\n]+\s*$/i.test(command)
+  if (singleCdOnly) {
+    const target = cdMatches[0][1].trim().replace(/['"]/g, '')
+    const absolutePath = path.resolve(currentDir, target)
+    return { valid: true, newDir: absolutePath }
+  }
+
+  return { valid: true }
 }
 
 // 渲染终端输出为图片
@@ -292,7 +312,7 @@ export function apply(ctx: Context, config: Config) {
       }
 
       command = h('', h.parse(command)).toString(true)
-      // 检查命令过滤（黑/白名单）
+      // 检查命令过滤（黑/白名单）；仅使用配置提供的正则
       const filterList = (config.commandList?.length ? config.commandList : config.blockedCommands) || []
       const filterMode = config.commandFilterMode || 'blacklist'
       if (isCommandBlocked(command, filterMode, filterList)) {
