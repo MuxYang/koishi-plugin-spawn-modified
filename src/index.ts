@@ -33,6 +33,8 @@ export const Config: Schema<Config> = Schema.object({
   restrictDirectory: Schema.boolean().description('是否限制在当前目录及子目录内执行命令（禁止 cd 到上级或其他目录）。').default(false),
 })
 
+export const schema = Config
+
 export interface State {
   command: string
   timeout: number
