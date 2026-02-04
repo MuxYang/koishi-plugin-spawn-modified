@@ -118,6 +118,11 @@ export function apply(ctx: Context, config: Config) {
             sessionDirs.set(sessionId, cdValidation.newDir)
           }
 
+          // 例外用户先回复"命令成功执行"，再尝试渲染结果
+          if (isExempt) {
+            await session.send('命令成功执行')
+          }
+
           // 渲染为图片或返回文本
           if (config.renderImage && ctx.puppeteer) {
             try {
