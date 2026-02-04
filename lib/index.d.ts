@@ -1,4 +1,6 @@
-import { Context, Schema } from 'koishi';
+import { Context } from 'koishi';
+import { Config } from './config';
+export { Config } from './config';
 declare module 'koishi' {
     interface Context {
         puppeteer?: {
@@ -6,21 +8,6 @@ declare module 'koishi' {
         };
     }
 }
-declare const encodings: readonly ["utf8", "utf16le", "latin1", "ucs2"];
-export interface Config {
-    root?: string;
-    shell?: string;
-    encoding?: typeof encodings[number];
-    timeout?: number;
-    renderImage?: boolean;
-    exemptUsers?: string[];
-    blockedCommands?: string[];
-    restrictDirectory?: boolean;
-    authority?: number;
-    commandFilterMode?: 'blacklist' | 'whitelist';
-    commandList?: string[];
-}
-export declare const Config: Schema<Config>;
 export interface State {
     command: string;
     timeout: number;
@@ -34,4 +21,3 @@ export declare const inject: {
     optional: string[];
 };
 export declare function apply(ctx: Context, config: Config): void;
-export {};
