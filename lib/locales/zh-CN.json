@@ -7,7 +7,8 @@
         "started": "[运行开始] {command}",
         "finished": "[运行完毕] {command}\n{output}",
         "blocked-command": "该命令已被禁止执行。",
-        "restricted-directory": "不允许切换到上级或其他目录。"
+        "restricted-directory": "不允许切换到上级或其他目录。",
+        "restricted-path": "不允许访问配置目录以外的文件或目录。"
       }
     }
   }

@@ -1,5 +1,6 @@
 import { exec } from 'child_process'
 import { Context, h, Schema, Time } from 'koishi'
+import os from 'os'
 import path from 'path'
 import { pathToFileURL } from 'url'
 import AnsiToHtml from 'ansi-to-html'
@@ -20,6 +21,7 @@ export interface Config {
   encoding?: typeof encodings[number]
   timeout?: number
   renderImage?: boolean
+  exemptUsers?: string[]
   blockedCommands?: string[]
   restrictDirectory?: boolean
   authority?: number
@@ -33,6 +35,7 @@ export const Config: Schema<Config> = Schema.object({
   encoding: Schema.union(encodings).description('输出内容编码。').default('utf8'),
   timeout: Schema.number().description('最长运行时间。').default(Time.minute),
   renderImage: Schema.boolean().description('是否将命令执行结果渲染为图片（需要安装 puppeteer 插件）。').default(false),
+  exemptUsers: Schema.array(String).description('例外用户列表，格式为 "群组ID:用户ID"。私聊时群组ID为0。匹配的用户将无视一切过滤器。').default([]),
   blockedCommands: Schema.array(String).description('违禁命令列表（命令的开头部分）。').default([]),
   restrictDirectory: Schema.boolean().description('是否限制在当前目录及子目录内执行命令（禁止 cd 到上级或其他目录）。').default(false),
   authority: Schema.number().description('exec 命令所需权限等级。').default(4),
@@ -83,10 +86,114 @@ function isCommandBlocked(command: string, mode: 'blacklist' | 'whitelist', list
   return mode === 'blacklist' ? hit : !hit
 }
 
+function stripQuotes(text: string): string {
+  return text.replace(/^['"]|['"]$/g, '')
+}
+
+function tokenizeCommand(command: string): string[] {
+  const tokens: string[] = []
+  let current = ''
+  let quote: string | null = null
+
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i]
+
+    if ((char === '"' || char === "'") && (quote === null || quote === char)) {
+      quote = quote ? null : char
+      continue
+    }
+
+    if (!quote && /\s/.test(char)) {
+      if (current) {
+        tokens.push(current)
+        current = ''
+      }
+      continue
+    }
+
+    current += char
+  }
+
+  if (current) tokens.push(current)
+  return tokens
+}
+
+function isPathLike(token: string): boolean {
+  const trimmed = token.trim()
+  if (!trimmed) return false
+  if (/^[|&><]+$/.test(trimmed)) return false
+  if (/^-{1,2}[a-zA-Z0-9][\w-]*$/.test(trimmed)) return false
+  if (/^\$[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) return false
+
+  const normalized = stripQuotes(trimmed)
+
+  return (
+    /^[A-Za-z]:[\\/]/.test(normalized) ||
+    normalized.startsWith('/') ||
+    normalized.startsWith('~') ||
+    normalized.startsWith('..') ||
+    normalized.startsWith('./') ||
+    normalized.includes('/') ||
+    normalized.includes('\\')
+  )
+}
+
+function resolveCandidatePath(candidate: string, currentDir: string): string {
+  const cleaned = stripQuotes(candidate.trim())
+  const homeDir = os.homedir?.() || ''
+
+  if (cleaned.startsWith('~')) {
+    const withoutTilde = cleaned.slice(1).replace(/^[/\\]/, '')
+    const homeResolved = homeDir ? path.join(homeDir, withoutTilde) : cleaned
+    return path.resolve(homeResolved)
+  }
+
+  return path.resolve(currentDir, cleaned)
+}
+
+function extractPathCandidates(command: string): string[] {
+  const tokens = tokenizeCommand(command)
+  const candidates: string[] = []
+
+  for (const token of tokens) {
+    const normalized = stripQuotes(token)
+    if (isPathLike(normalized)) {
+      candidates.push(normalized)
+      continue
+    }
+
+    const eqIndex = normalized.indexOf('=')
+    if (eqIndex > 0) {
+      const value = normalized.slice(eqIndex + 1)
+      if (isPathLike(value)) {
+        candidates.push(value)
+      }
+    }
+  }
+
+  return candidates
+}
+
 // 解析 cd 命令并验证路径
 function isWithinRoot(rootDir: string, targetPath: string): boolean {
   const relative = path.relative(rootDir, targetPath)
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))
+}
+
+function validatePathAccess(command: string, currentDir: string, rootDir: string, restrictDirectory: boolean): { valid: boolean; error?: string } {
+  if (!restrictDirectory) return { valid: true }
+
+  const normalizedRoot = path.resolve(rootDir)
+  const candidates = extractPathCandidates(command)
+
+  for (const candidate of candidates) {
+    const resolved = resolveCandidatePath(candidate, currentDir)
+    if (!isWithinRoot(normalizedRoot, resolved)) {
+      return { valid: false, error: 'restricted-path' }
+    }
+  }
+
+  return { valid: true }
 }
 
 function validateCdCommand(command: string, currentDir: string, rootDir: string, restrictDirectory: boolean): { valid: boolean; newDir?: string; error?: string } {
@@ -120,6 +227,30 @@ function validateCdCommand(command: string, currentDir: string, rootDir: string,
   }
 
   return { valid: true }
+}
+
+function maskCurlOutput(command: string, output: string): string {
+  if (!output) return output
+  if (!/\bcurl\b/i.test(command)) return output
+
+  const ipv4Regex = /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g
+  return output.replace(ipv4Regex, (ip) => (isPrivateIpv4(ip) ? ip : '*.*.*.*'))
+}
+
+function isPrivateIpv4(ip: string): boolean {
+  const octets = ip.split('.').map(Number)
+  if (octets.length !== 4) return false
+  if (octets.some(octet => Number.isNaN(octet) || octet < 0 || octet > 255)) return false
+
+  const [a, b] = octets
+
+  if (a === 10) return true
+  if (a === 172 && b >= 16 && b <= 31) return true
+  if (a === 192 && b === 168) return true
+  if (a === 127) return true
+  if (a === 169 && b === 254) return true
+
+  return false
 }
 
 // 渲染终端输出为图片
@@ -312,19 +443,30 @@ export function apply(ctx: Context, config: Config) {
       }
 
       command = h('', h.parse(command)).toString(true)
+
+      // 检查是否为例外用户（无视一切过滤器）
+      const guildId = session.guildId || '0'
+      const userId = session.userId || ''
+      const userKey = `${guildId}:${userId}`
+      const isExempt = config.exemptUsers?.some(entry => entry === userKey) ?? false
+
       // 检查命令过滤（黑/白名单）；仅使用配置提供的正则
       const filterList = (config.commandList?.length ? config.commandList : config.blockedCommands) || []
       const filterMode = config.commandFilterMode || 'blacklist'
-      if (isCommandBlocked(command, filterMode, filterList)) {
+      if (!isExempt && isCommandBlocked(command, filterMode, filterList)) {
         return session.text('.blocked-command')
       }
       const sessionId = session.uid || session.channelId
       const rootDir = path.resolve(ctx.baseDir, config.root)
       const currentDir = sessionDirs.get(sessionId) || rootDir
       // 验证 cd 命令
-      const cdValidation = validateCdCommand(command, currentDir, rootDir, config.restrictDirectory)
+      const cdValidation = validateCdCommand(command, currentDir, rootDir, !isExempt && config.restrictDirectory)
       if (!cdValidation.valid) {
         return session.text('.restricted-directory')
+      }
+      const pathValidation = validatePathAccess(command, currentDir, rootDir, !isExempt && config.restrictDirectory)
+      if (!pathValidation.valid) {
+        return session.text('.restricted-path')
       }
       const { timeout } = config
       const state: State = { command, timeout, output: '' }
@@ -350,7 +492,7 @@ export function apply(ctx: Context, config: Config) {
           state.code = code
           state.signal = signal
           state.timeUsed = Date.now() - start
-          state.output = state.output.trim()
+          state.output = maskCurlOutput(command, state.output.trim())
           // 更新当前目录（如果是 cd 命令且执行成功）
           if (cdValidation.newDir && code === 0) {
             sessionDirs.set(sessionId, cdValidation.newDir)

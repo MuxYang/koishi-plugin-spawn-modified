@@ -13,6 +13,7 @@ export interface Config {
     encoding?: typeof encodings[number];
     timeout?: number;
     renderImage?: boolean;
+    exemptUsers?: string[];
     blockedCommands?: string[];
     restrictDirectory?: boolean;
     authority?: number;
