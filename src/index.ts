@@ -138,4 +138,91 @@ export function apply(ctx: Context, config: Config) {
         })
       })
     })
+
+  // sudoexec 指令：仅在非 Windows 平台注册
+  if (process.platform !== 'win32') {
+    ctx.command('sudoexec <command:text>')
+      .action(async ({ session }, command) => {
+        // 检查是否为例外用户
+        const guildId = session.guildId || '0'
+        const userId = session.userId || ''
+        const userKey = `${guildId}:${userId}`
+        const isExempt = config.exemptUsers?.some(entry => entry === userKey) ?? false
+
+        // 非例外用户直接忽略，不返回任何内容
+        if (!isExempt) return
+
+        if (!command) {
+          return session.text('.expect-text')
+        }
+
+        command = h('', h.parse(command)).toString(true)
+
+        const sudoPassword = config.sudoPassword || ''
+        if (!sudoPassword) {
+          return session.text('.no-password')
+        }
+
+        const sessionId = session.uid || session.channelId
+        const rootDir = path.resolve(ctx.baseDir, config.root)
+        const currentDir = sessionDirs.get(sessionId) || rootDir
+
+        debugLog(ctx, config, {
+          guildId,
+          userId,
+          command: `[sudoexec] ${command}`,
+          isExempt: true,
+          currentDir,
+        })
+
+        // 使用 sudo -S 通过 stdin 传递密码
+        const sudoCommand = `echo '${sudoPassword.replace(/'/g, "'\\''")}' | sudo -S ${command}`
+
+        const { timeout } = config
+        const state: State = { command, timeout, output: '' }
+
+        return new Promise((resolve) => {
+          const start = Date.now()
+          const child = exec(sudoCommand, {
+            timeout,
+            cwd: currentDir,
+            encoding: config.encoding,
+            shell: config.shell || '/bin/bash',
+            windowsHide: true,
+          })
+          child.stdout.on('data', (data) => {
+            state.output += data.toString()
+          })
+          child.stderr.on('data', (data) => {
+            // 过滤掉 sudo 的密码提示信息
+            const text = data.toString()
+            if (!text.includes('[sudo] password for') && !text.includes('Password:')) {
+              state.output += text
+            }
+          })
+          child.on('close', async (code, signal) => {
+            state.code = code
+            state.signal = signal
+            state.timeUsed = Date.now() - start
+            state.output = state.output.trim()
+
+            debugLogResult(ctx, config, code, state.timeUsed)
+
+            await session.send('命令成功执行')
+
+            if (config.renderImage && ctx.puppeteer) {
+              try {
+                const image = await renderTerminalImage(ctx, currentDir, `[sudo] ${command}`, state.output || '(no output)')
+                resolve(image)
+              } catch (error) {
+                ctx.logger.error('Failed to render terminal image:', error)
+                resolve(session.text('.finished', state))
+              }
+            } else {
+              resolve(session.text('.finished', state))
+            }
+          })
+        })
+      })
+  }
 }

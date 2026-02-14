@@ -15,6 +15,7 @@ export interface Config {
     authority?: number
     commandFilterMode?: 'blacklist' | 'whitelist'
     commandList?: string[]
+    sudoPassword?: string
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -30,4 +31,7 @@ export const Config: Schema<Config> = Schema.object({
     authority: Schema.number().description('exec 命令所需权限等级。').default(4),
     commandFilterMode: Schema.union(['blacklist', 'whitelist']).description('命令过滤模式：blacklist/whitelist').default('blacklist'),
     commandList: Schema.array(String).description('命令过滤列表，配合过滤模式使用（为空则不限制）。').default([]),
+    ...(process.platform !== 'win32' ? {
+        sudoPassword: Schema.string().role('secret').description('管理员密码，用于 sudoexec 指令以最高权限执行命令。').default(''),
+    } : {}),
 })

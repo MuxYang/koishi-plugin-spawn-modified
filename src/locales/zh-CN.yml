@@ -10,3 +10,11 @@ commands:
       blocked-command: 该命令已被禁止执行。
       restricted-directory: 不允许切换到上级或其他目录。
       restricted-path: 不允许访问配置目录以外的文件或目录。
+  sudoexec:
+    description: 以最高权限执行命令（仅限例外用户）
+    messages:
+      expect-text: 请输入要运行的命令。
+      no-password: 未配置管理员密码，无法执行 sudo 命令。
+      finished: |-
+        [sudo 运行完毕] {command}
+        {output}
